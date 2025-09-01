@@ -1,0 +1,27 @@
+{
+  // Intérprete de Python del proyecto
+  "python.defaultInterpreterPath": "C:\\Users\\Javier\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+  // Formateo automático
+  "editor.formatOnSave": true,
+  "python.formatting.provider": "black",
+  // Organizar imports automáticamente al guardar
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "explicit"
+  },
+  // Linter rápido y moderno
+  "python.linting.enabled": true,
+  "python.linting.ruffEnabled": true,
+  // Estilo de código
+  "editor.rulers": [
+    88
+  ],
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  // Recomendaciones de extensiones para el workspace
+  "extensions.recommendations": [
+    "ms-python.python",
+    "ms-python.black-formatter",
+    "charliermarsh.ruff",
+    "ms-python.vscode-pylance"
+  ]
+}

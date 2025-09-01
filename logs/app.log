@@ -1,0 +1,15 @@
+2025-09-01 21:34:43 | INFO     | root                      | configure_logging   :164  | Sistema de logging configurado correctamente
+2025-09-01 21:34:43 | INFO     | root                      | configure_logging   :165  | Nivel de logging: INFO
+2025-09-01 21:34:43 | INFO     | root                      | configure_logging   :167  | Logs de archivo habilitados en: logs
+2025-09-01 21:34:43 | INFO     | root                      | configure_logging   :169  | Logs de consola habilitados
+2025-09-01 21:34:51 | INFO     | ImageToExcelApp           | select_image        :506  | Imagen seleccionada: C:/Users/Javier/Downloads/WhatsApp Image 2025-08-21 at 14.01.47 - copia.jpeg
+2025-09-01 21:34:55 | INFO     | ImageToExcelApp           | select_output_directory:535  | Directorio de salida seleccionado: C:/Users/Javier/Downloads
+2025-09-01 21:34:56 | INFO     | ImageProcessor            | process_image       :98   | Iniciando procesamiento de imagen: C:/Users/Javier/Downloads/WhatsApp Image 2025-08-21 at 14.01.47 - copia.jpeg
+2025-09-01 21:34:56 | INFO     | ImageToExcelApp           | on_processing_started:569  | Procesamiento iniciado
+2025-09-01 21:34:56 | ERROR    | services.paddle_ocr       | shutdown            :372  | Error al cerrar motor OCR: 'PaddleOCREngine' object has no attribute '_ocr'
+2025-09-01 21:34:56 | ERROR    | ImageProcessor            | process_image       :139  | Error durante el procesamiento: PaddleOCREngine.__init__() got an unexpected keyword argument 'language'
+Traceback (most recent call last):
+  File "C:\Users\Javier\Desktop\Proyectos\I2E\main.py", line 108, in process_image
+    self._ocr_engine = PaddleOCREngine(
+TypeError: PaddleOCREngine.__init__() got an unexpected keyword argument 'language'
+2025-09-01 21:34:59 | ERROR    | ImageToExcelApp           | on_processing_error :595  | Error en conversión: Error durante el procesamiento: PaddleOCREngine.__init__() got an unexpected keyword argument 'language'

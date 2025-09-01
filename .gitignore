@@ -1,0 +1,23 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.dylib
+*.egg-info/
+build/
+dist/
+
+# Node
+node_modules/
+
+# VS Code (opcional)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Environment variables
+.env

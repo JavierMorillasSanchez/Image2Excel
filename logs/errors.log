@@ -1,0 +1,7 @@
+2025-09-01 21:34:56 | ERROR    | services.paddle_ocr       | shutdown            :372  | Error al cerrar motor OCR: 'PaddleOCREngine' object has no attribute '_ocr'
+2025-09-01 21:34:56 | ERROR    | ImageProcessor            | process_image       :139  | Error durante el procesamiento: PaddleOCREngine.__init__() got an unexpected keyword argument 'language'
+Traceback (most recent call last):
+  File "C:\Users\Javier\Desktop\Proyectos\I2E\main.py", line 108, in process_image
+    self._ocr_engine = PaddleOCREngine(
+TypeError: PaddleOCREngine.__init__() got an unexpected keyword argument 'language'
+2025-09-01 21:34:59 | ERROR    | ImageToExcelApp           | on_processing_error :595  | Error en conversión: Error durante el procesamiento: PaddleOCREngine.__init__() got an unexpected keyword argument 'language'
