@@ -16,7 +16,7 @@ import sys
 import os
 from pathlib import Path
 from typing import Optional, Dict, Any
-from dataclasses import dataclass
+
 
 from PyQt5.QtWidgets import (
     QApplication,
@@ -35,33 +35,13 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
 from PyQt5.QtGui import QFont, QPalette, QColor
-import logging
+
 
 from infrastructure.logging_config import configure_logging
 from services.paddle_ocr import PaddleOCREngine
 from services.parser import ocr_to_table
 from services.exporter import export_table_to_excel
-
-
-@dataclass
-class AppConfig:
-    """Configuración centralizada de la aplicación."""
-
-    # Configuración de la ventana
-    window_title: str = "Convertidor de Imagen a Excel"
-    window_width: int = 500
-    window_height: int = 450
-
-    # Configuración de OCR
-    default_language: str = "es"
-    use_angle_cls: bool = True
-
-    # Configuración de archivos
-    supported_image_formats: str = "Archivos de Imagen (*.png *.jpg *.jpeg *.bmp *.tiff *.gif)"
-    default_excel_filename: str = "texto_extraido.xlsx"
-
-    # Configuración de logging
-    log_level: int = logging.INFO
+from config import AppConfig
 
 
 class ImageProcessor(QObject):
@@ -80,7 +60,8 @@ class ImageProcessor(QObject):
     def __init__(self, config: AppConfig):
         super().__init__()
         self.config = config
-        self.logger = logging.getLogger(self.__class__.__name__)
+        from infrastructure.logging_config import get_logger
+        self.logger = get_logger(self.__class__.__name__)
         self._ocr_engine: Optional[PaddleOCREngine] = None
 
     def process_image(self, image_path: str, output_dir: str) -> None:
@@ -105,10 +86,12 @@ class ImageProcessor(QObject):
 
             # Inicializar motor OCR si es necesario
             if self._ocr_engine is None:
-                self._ocr_engine = PaddleOCREngine(
-                    language=self.config.default_language,
-                    use_angle_cls=self.config.use_angle_cls
+                from services.paddle_ocr import OCRConfig
+                ocr_config = OCRConfig(
+                    language=self.config.ocr_language,
+                    use_angle_cls=self.config.ocr_use_angle_cls
                 )
+                self._ocr_engine = PaddleOCREngine(config=ocr_config)
             self.progress_updated.emit(30)
 
             # Extraer texto con OCR
@@ -127,7 +110,7 @@ class ImageProcessor(QObject):
                 table=table,
                 ocr=ocr_result,
                 output_dir=output_dir,
-                filename=self.config.default_excel_filename
+                filename=self.config.excel_default_filename
             )
             self.progress_updated.emit(100)
 
@@ -187,6 +170,10 @@ class OCRWorker(QThread):
         self.image_path = image_path
         self.output_path = output_path
 
+        # Inicializar logger
+        from infrastructure.logging_config import get_logger
+        self.logger = get_logger(self.__class__.__name__)
+
         # Conectar señales del procesador
         self.processor.processing_started.connect(self._on_started)
         self.processor.processing_finished.connect(self._on_finished)
@@ -228,7 +215,8 @@ class ImageToExcelApp(QMainWindow):
     def __init__(self, config: AppConfig):
         super().__init__()
         self.config = config
-        self.logger = logging.getLogger(self.__class__.__name__)
+        from infrastructure.logging_config import get_logger
+        self.logger = get_logger(self.__class__.__name__)
 
         # Colores personalizables - Paleta de colores especificada
         self.colors = {
@@ -484,7 +472,7 @@ class ImageToExcelApp(QMainWindow):
                 self,
                 "Seleccionar Imagen",
                 "",
-                self.config.supported_image_formats
+                "Archivos de Imagen (*.png *.jpg *.jpeg *.bmp *.tiff *.gif)"
             )
 
             if file_path:
@@ -616,7 +604,7 @@ def main():
     try:
         # Configurar logging
         config = AppConfig()
-        configure_logging(config.log_level)
+        configure_logging(config.logging_level)
 
         # Crear aplicación
         app = QApplication(sys.argv)
@@ -632,7 +620,9 @@ def main():
         sys.exit(app.exec_())
 
     except Exception as e:
-        logging.error("Error crítico en la aplicación: %s", e)
+        from infrastructure.logging_config import get_logger
+        logger = get_logger(__name__)
+        logger.error("Error crítico en la aplicación: %s", e)
         sys.exit(1)
 
 

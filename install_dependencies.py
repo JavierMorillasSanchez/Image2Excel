@@ -56,16 +56,20 @@ def upgrade_pip():
     )
 
 def install_basic_dependencies():
-    """Instalar dependencias básicas."""
-    basic_deps = [
-        "numpy>=1.24.0",
+    """Instalar dependencias básicas con versiones compatibles."""
+    print("\n📦 Instalando dependencias básicas con versiones compatibles...")
+
+    # Versiones específicas que funcionan bien juntas
+    compatible_packages = [
+        "numpy==1.24.3",
         "Pillow>=9.0.0",
-        "opencv-python>=4.8.0",
+        "opencv-python==4.8.1.78",
         "openpyxl>=3.1.0"
     ]
 
-    for dep in basic_deps:
-        if not run_command(f"{sys.executable} -m pip install {dep}", f"Instalando {dep}"):
+    for package in compatible_packages:
+        if not run_command(f"{sys.executable} -m pip install {package}", f"Instalando {package}"):
+            print(f"❌ Error al instalar {package}")
             return False
 
     return True

@@ -1,33 +1,6 @@
-# I2E - Convertidor de Imagen a Excel v2.0
-# Dependencias principales para la aplicación
-
-# Interfaz gráfica
-PyQt5>=5.15.0
-PyQt5-sip>=12.8.0
-
-# Motor OCR - Versiones compatibles disponibles
-paddlepaddle>=2.5.1
-paddleocr>=2.6.0
-
-# Procesamiento de imágenes
-opencv-python>=4.8.0
-Pillow>=9.0.0
-numpy>=1.24.0
-
-# Exportación a Excel
-openpyxl>=3.1.0
-
-# Utilidades
-pathlib2>=2.3.0; python_version<"3.4"
-
-# Dependencias de desarrollo (opcionales)
-black>=23.0.0
-ruff>=0.1.0
-pytest>=7.0.0
-pytest-cov>=4.0.0
-
-# Notas de instalación:
-# 1. PyQt5 puede requerir Visual C++ Build Tools en Windows
-# 2. PaddlePaddle puede tardar en descargarse (~200MB)
-# 3. Si tienes problemas con PyQt5, puedes usar PySide2 como alternativa
-# 4. Las versiones de PaddlePaddle se han actualizado para compatibilidad
+numpy==1.26.4
+opencv-python==4.6.0.66
+pillow==10.4.0
+pytesseract==0.3.13
+paddleocr==2.7.3
+imgaug==0.4.0

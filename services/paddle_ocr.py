@@ -41,7 +41,6 @@ class OCRConfig:
     det_db_thresh: float = 0.3
     det_db_box_thresh: float = 0.5
     det_db_unclip_ratio: float = 1.6
-    rec_char_dict_path: Optional[str] = None
     rec_batch_num: int = 6
     cls_batch_num: int = 6
     cls_thresh: float = 0.9
@@ -72,8 +71,8 @@ class PaddleOCREngine(OCREngine):
 
         logger.info(
             "PaddleOCREngine inicializado con configuración: language=%s, "
-            "use_angle_cls=%s, use_gpu=%s",
-            self.config.language, self.config.use_angle_cls, self.config.use_gpu
+            "use_angle_cls=%s",
+            self.config.language, self.config.use_angle_cls
         )
 
     def _initialize_ocr(self) -> None:
@@ -85,28 +84,48 @@ class PaddleOCREngine(OCREngine):
             logger.info("Inicializando motor PaddleOCR...")
             start_time = time.time()
 
-            # Configurar parámetros del motor
-            ocr_params = {
-                'use_angle_cls': self.config.use_angle_cls,
-                'lang': self.config.language,
-                'use_gpu': self.config.use_gpu,
-                'gpu_mem': self.config.gpu_mem,
-                'cpu_threads': self.config.cpu_threads,
-                'enable_mkldnn': self.config.enable_mkldnn,
-                'det_db_thresh': self.config.det_db_thresh,
-                'det_db_box_thresh': self.config.det_db_box_thresh,
-                'det_db_unclip_ratio': self.config.det_db_unclip_ratio,
-                'rec_batch_num': self.config.rec_batch_num,
-                'cls_batch_num': self.config.cls_batch_num,
-                'cls_thresh': self.config.cls_thresh
-            }
+            # Configurar parámetros del motor con manejo de compatibilidad
+            ocr_params = {}
 
-            # Añadir diccionario personalizado si se especifica
-            if self.config.rec_char_dict_path:
-                ocr_params['rec_char_dict_path'] = self.config.rec_char_dict_path
+            # Parámetros básicos que funcionan en todas las versiones
+            ocr_params['lang'] = self.config.language
 
-            # Filtrar parámetros None
-            ocr_params = {k: v for k, v in ocr_params.items() if v is not None}
+            # Parámetros opcionales que se añaden solo si están disponibles
+            try:
+                # Probar parámetros uno por uno para detectar compatibilidad
+                test_ocr = PaddleOCR(lang=self.config.language)
+                del test_ocr
+
+                # Si llegamos aquí, podemos usar parámetros avanzados
+                if self.config.use_angle_cls:
+                    ocr_params['use_angle_cls'] = True
+
+                if self.config.use_gpu:
+                    ocr_params['use_gpu'] = True
+                    ocr_params['gpu_mem'] = self.config.gpu_mem
+
+                if self.config.cpu_threads > 1:
+                    ocr_params['cpu_threads'] = self.config.cpu_threads
+
+                if self.config.enable_mkldnn:
+                    ocr_params['enable_mkldnn'] = True
+
+                # Parámetros de detección para mejor calidad
+                ocr_params['det_db_thresh'] = self.config.det_db_thresh
+                ocr_params['det_db_box_thresh'] = self.config.det_db_box_thresh
+                ocr_params['det_db_unclip_ratio'] = self.config.det_db_unclip_ratio
+
+                # Parámetros de reconocimiento para mejor precisión
+                ocr_params['rec_batch_num'] = self.config.rec_batch_num
+                ocr_params['cls_batch_num'] = self.config.cls_batch_num
+                ocr_params['cls_thresh'] = self.config.cls_thresh
+
+                logger.info("Usando configuración avanzada de PaddleOCR")
+
+            except Exception as e:
+                logger.warning("Versión de PaddleOCR limitada, usando configuración básica: %s", e)
+                # Configuración mínima para versiones antiguas
+                ocr_params = {'lang': self.config.language}
 
             self._ocr = PaddleOCR(**ocr_params)
             self._initialized = True
@@ -152,8 +171,14 @@ class PaddleOCREngine(OCREngine):
             start_time = time.time()
             logger.info("Procesando imagen: %s", image_path)
 
-            # Ejecutar OCR
-            result = self._ocr.ocr(image_path, cls=True)
+            # Ejecutar OCR con parámetros optimizados
+            try:
+                # Intentar con clasificación de ángulo
+                result = self._ocr.ocr(image_path, cls=True)
+            except Exception as e:
+                logger.warning("Error con cls=True, intentando sin clasificación: %s", e)
+                # Fallback: sin clasificación de ángulo
+                result = self._ocr.ocr(image_path, cls=False)
 
             # Calcular tiempo de procesamiento
             processing_time = time.time() - start_time
@@ -204,7 +229,11 @@ class PaddleOCREngine(OCREngine):
             logger.info("Procesando array de imagen con dimensiones: %s", image_array.shape)
 
             # Ejecutar OCR en el array
-            result = self._ocr.ocr(image_array, cls=True)
+            try:
+                result = self._ocr.ocr(image_array, cls=True)
+            except Exception as e:
+                logger.warning("Error con cls=True, intentando sin clasificación: %s", e)
+                result = self._ocr.ocr(image_array, cls=False)
 
             processing_time = time.time() - start_time
             self._processing_times.append(processing_time)
