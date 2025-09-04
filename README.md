@@ -46,18 +46,16 @@ I2E/
 ### Dependencias Principales
 
 ```bash
-# Core dependencies
-PyQt5>=5.15.0          # Interfaz gráfica
-PaddleOCR>=2.6.0       # Motor OCR
-opencv-python>=4.8.0   # Procesamiento de imágenes
-Pillow>=9.0.0          # Manipulación de imágenes
-numpy>=1.24.0          # Computación numérica
-openpyxl>=3.1.0        # Exportación a Excel
-
-# Development dependencies
-black>=23.0.0           # Formateo de código
-ruff>=0.1.0             # Linting y formateo
-pytest>=7.0.0           # Framework de testing
+# Coinciden exactamente con requirements.txt
+data
+imgaug==0.4.0
+numpy==1.26.4
+opencv-contrib-python==4.6.0.66
+opencv-python==4.6.0.66
+paddleocr==2.7.3
+pillow==10.4.0
+protobuf==3.20.2
+pytesseract==0.3.13
 ```
 
 ### Instalación Automática
@@ -81,17 +79,15 @@ python main.py
 ### Instalación Manual
 
 ```bash
-# Instalar dependencias una por una
-pip install PyQt5
-pip install "paddlepaddle<2.5.0"
-pip install "paddleocr>=2.6.0"
-pip install opencv-python
-pip install Pillow
-pip install numpy
-pip install openpyxl
-
-# Dependencias de desarrollo
-pip install black ruff pytest
+# Instalar exactamente los mismos paquetes/versions que requirements.txt
+pip install imgaug==0.4.0
+pip install numpy==1.26.4
+pip install opencv-contrib-python==4.6.0.66
+pip install opencv-python==4.6.0.66
+pip install paddleocr==2.7.3
+pip install pillow==10.4.0
+pip install protobuf==3.20.2
+pip install pytesseract==0.3.13
 ```
 
 ## 🎯 Uso de la Aplicación
