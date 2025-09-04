@@ -1,6 +1,8 @@
-numpy==1.26.4
-opencv-python==4.6.0.66
-pillow==10.4.0
-pytesseract==0.3.13
-paddleocr==2.7.3
 imgaug==0.4.0
+numpy==1.26.4
+opencv-contrib-python==4.6.0.66
+opencv-python==4.6.0.66
+paddleocr==2.7.3
+pillow==10.4.0
+protobuf==3.20.2
+pytesseract==0.3.13
