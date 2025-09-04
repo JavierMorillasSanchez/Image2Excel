@@ -1,23 +1,43 @@
-# Python
-.venv/
-venv/
+# ---- Python ----
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
 *.so
-*.dylib
 *.egg-info/
-build/
+.eggs/
+.build/
 dist/
+build/
+*.spec
 
-# Node
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Tools caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Logs & outputs
+logs/
+*.log
+*.xlsx
+*.xlsm
+coverage.xml
+htmlcov/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.bolt/
+
+# Node (no usamos Node aquí)
 node_modules/
-
-# VS Code (opcional)
-.vscode/*
-!.vscode/settings.json
-!.vscode/extensions.json
-
-# Environment variables
-.env
+package-lock.json
+package.json
+index.js
