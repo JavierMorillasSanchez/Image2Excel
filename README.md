@@ -47,7 +47,6 @@ I2E/
 
 ```bash
 # Coinciden exactamente con requirements.txt
-data
 imgaug==0.4.0
 numpy==1.26.4
 opencv-contrib-python==4.6.0.66
