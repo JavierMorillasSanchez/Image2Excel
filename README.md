@@ -1,35 +1,38 @@
 # I2E - Convertidor de Imagen a Excel v2.0
 
-**Aplicación de escritorio profesional para convertir imágenes a Excel usando OCR avanzado**
+**Aplicación de escritorio profesional para convertir imágenes a Excel usando OCR**
 
 ## 🚀 Características Principales
 
-- **OCR Inteligente**: Motor PaddleOCR optimizado con detección automática de idioma
-- **Parser Avanzado**: Algoritmo inteligente de detección de tablas con métricas de calidad
-- **Excel Profesional**: Exportación con formato profesional y estilos personalizables
-- **Arquitectura Limpia**: Separación clara de responsabilidades y patrones SOLID
-- **Logging Robusto**: Sistema de logging estructurado con rotación automática
-- **Configuración Centralizada**: Gestión unificada de parámetros y entornos
-- **Tests Completos**: Suite de tests unitarios y de integración
-- **Manejo de Errores**: Sistema robusto de manejo de excepciones
+- **OCR**: Extracción de texto desde imágenes con PaddleOCR
+- **Parser básico**: Conversión simple de líneas a filas de tabla
+- **Exportación a Excel**: Generación de archivos .xlsx con openpyxl
+- **UI PyQt5**: Interfaz de escritorio sencilla para seleccionar imagen y destino
+- **Logging simple**: Mensajes informativos en consola/archivo
 
 ## 🏗️ Arquitectura del Sistema
 
 ```
 I2E/
-├── main.py                 # Aplicación principal con UI PyQt5
-├── config.py              # Configuración centralizada
-├── core/                  # Modelos y interfaces del dominio
-│   ├── models.py         # Modelos de datos (OCRResult, Table, etc.)
-│   └── engine.py         # Interfaz abstracta para motores OCR
-├── services/              # Lógica de negocio
-│   ├── paddle_ocr.py     # Motor OCR con PaddleOCR
-│   ├── parser.py         # Parser inteligente de tablas
-│   └── exporter.py       # Exportador profesional a Excel
-├── infrastructure/        # Utilidades de infraestructura
-│   └── logging_config.py # Sistema de logging avanzado
-└── test_app.py           # Suite completa de tests
+├── main.py               # Aplicación principal con UI (PyQt5)
+├── config.py             # Configuración básica de la app
+├── core/
+│   ├── models.py         # Modelos de dominio (OCRResult, Table, etc.)
+│   └── engine.py         # Interfaz simple para motores OCR
+├── services/
+│   ├── paddle_ocr.py     # Integración con PaddleOCR
+│   ├── parser.py         # Parser básico de líneas a tabla
+│   └── exporter.py       # Exportación a Excel con openpyxl
+├── infrastructure/
+│   └── logging_config.py # Configuración de logging simple
+└── test_app.py           # Tests puntuales (si se usan)
 ```
+
+## Estado actual / Roadmap breve
+
+- ✅ Limpieza de repositorio y dependencias básicas completada
+- 🔜 Refactor a puertos y casos de uso (use-cases) para aislar la lógica
+- 🔜 Test de integración imagen → xlsx cubriendo el flujo completo
 
 ## 🔧 Instalación
 
@@ -189,12 +192,10 @@ python -m pytest test_app.py --cov=. --cov-report=html
 
 ### Sistema de Logging
 
-La aplicación incluye un sistema de logging avanzado con:
+La aplicación incluye un sistema de logging con:
 
-- **Múltiples Handlers**: Consola, archivo, archivo de errores
-- **Rotación Automática**: Evita archivos de log muy grandes
-- **Niveles Configurables**: DEBUG, INFO, WARNING, ERROR, CRITICAL
-- **Formato Estructurado**: Timestamp, nivel, módulo, función, línea
+- **Consola y archivo** (configurable)
+- **Niveles**: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 ### Configuración de Logging
 
@@ -203,29 +204,6 @@ from infrastructure.logging_config import configure_logging
 
 # Configuración básica
 configure_logging(level=logging.INFO)
-
-# Configuración avanzada
-configure_logging(
-    level=logging.DEBUG,
-    log_to_file=True,
-    log_to_console=True,
-    log_dir="logs",
-    max_file_size=50*1024*1024,  # 50MB
-    backup_count=10
-)
-```
-
-### Métricas de Rendimiento
-
-```python
-# Obtener estadísticas del motor OCR
-ocr_engine = PaddleOCREngine()
-stats = ocr_engine.get_performance_stats()
-print(f"Tiempo promedio: {stats['avg_processing_time']:.2f}s")
-
-# Métricas del parser
-table, metrics = parser.parse_ocr_to_table(ocr_result)
-print(f"Score de confianza: {metrics.confidence_score:.2f}")
 ```
 
 ## 🔍 Troubleshooting
@@ -249,54 +227,6 @@ Error: Out of memory during OCR processing
 Error: Unsupported image format
 ```
 **Solución**: Convertir la imagen a un formato soportado (PNG, JPG, etc.).
-
-### Logs de Debug
-
-Para obtener información detallada de debug:
-
-```python
-# Configurar logging de debug
-from infrastructure.logging_config import configure_development_logging
-configure_development_logging()
-
-# O habilitar debug mode
-export I2E_DEBUG=true
-```
-
-## 🚀 Optimización y Rendimiento
-
-### Configuración de GPU
-
-```python
-from services.paddle_ocr import OCRConfig
-
-# Habilitar GPU para mejor rendimiento
-gpu_config = OCRConfig(
-    use_gpu=True,
-    gpu_mem=1000,  # MB
-    cpu_threads=20
-)
-```
-
-### Optimización de Memoria
-
-```python
-# Configurar límites de memoria
-config = AppConfig(
-    memory_limit_mb=2048,  # 2GB
-    max_worker_threads=4
-)
-```
-
-### Procesamiento por Lotes
-
-```python
-# Configurar procesamiento por lotes
-parser_config = ParsingConfig(
-    max_columns=100,
-    detect_table_structure=True
-)
-```
 
 ## 🤝 Contribución
 
@@ -331,28 +261,17 @@ refactor: mejorar rendimiento del motor OCR
 ### v2.0.0 (2024-01-XX)
 
 #### ✨ Nuevas Características
-- Arquitectura limpia con separación de responsabilidades
-- Sistema de logging avanzado con rotación automática
-- Parser inteligente de tablas con métricas de calidad
-- Exportador de Excel con formato profesional
-- Configuración centralizada y personalizable
-- Suite completa de tests unitarios y de integración
+- Parser básico de tablas
+- Exportación a Excel
+- UI en PyQt5
+- Logging simple
 
 #### 🔧 Mejoras
 - Mejor manejo de errores y validaciones
-- Optimización de rendimiento del motor OCR
-- Interfaz de usuario mejorada con barra de progreso
-- Soporte para múltiples idiomas y configuraciones
-- Gestión robusta de memoria y recursos
+- Interfaz de usuario con barra de progreso
 
 #### 🐛 Correcciones
-- Corrección de problemas de memoria en procesamiento de imágenes grandes
-- Mejora en la detección de separadores de columnas
-- Corrección de errores en la exportación de Excel
-- Mejora en el manejo de archivos de imagen corruptos
-
-### v1.0.0 (2023-XX-XX)
-- Versión inicial con funcionalidad básica de OCR y exportación
+- Correcciones y estabilización de dependencias
 
 ## 📄 Licencia
 
@@ -377,4 +296,4 @@ Este proyecto está bajo la Licencia MIT. Ver el archivo `LICENSE` para más det
 
 ---
 
-**I2E v2.0** - Transformando imágenes en datos estructurados con la potencia del OCR avanzado.
+**I2E v2.0** - Transformando imágenes en datos estructurados con la potencia del OCR.
