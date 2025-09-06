@@ -1,8 +1,9 @@
-imgaug==0.4.0
-numpy==1.26.4
-opencv-contrib-python==4.6.0.66
-opencv-python==4.6.0.66
 paddleocr==2.7.3
-pillow==10.4.0
-protobuf==3.20.2
-pytesseract==0.3.13
+paddlepaddle==2.5.2 ; platform_system == "Windows"
+numpy==1.26.4
+imgaug==0.4.0
+protobuf==3.20.2 ; platform_system == "Windows"
+pillow>=10.3,<12
+opencv-python>=4.8,<4.10
+openpyxl>=3.1.2
+beautifulsoup4>=4.12.2

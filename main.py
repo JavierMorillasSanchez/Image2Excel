@@ -43,6 +43,53 @@ from services.parser import ocr_to_table
 from services.exporter import export_table_to_excel
 from config import AppConfig
 
+# Imports para la nueva arquitectura
+from image2excel.infrastructure.ocr.paddle_table_detector import PaddleTableDetector
+from image2excel.infrastructure.ocr.paddle_ocr_engine import PaddleOcrEngine
+from image2excel.infrastructure.exporter.openpyxl_exporter import OpenpyxlExcelExporter
+from image2excel.use_cases.process_image_to_excel import ProcessImageToExcel
+
+# --- INICIO BLOQUE NUEVO (WIRING Clean Architecture) ---
+from pathlib import Path
+
+# Importa tu caso de uso y adaptadores nuevos
+from image2excel.use_cases.process_image_to_excel import ProcessImageToExcel
+from image2excel.infrastructure.ocr.paddle_table_detector import PaddleTableDetector
+from image2excel.infrastructure.ocr.paddle_ocr_engine import PaddleOcrEngine
+from image2excel.infrastructure.exporter.openpyxl_exporter import OpenpyxlExcelExporter
+
+# Pequeños adaptadores locales para cumplir los puertos
+from PIL import Image
+
+class PillowImageLoader:
+    def load(self, image_path: Path):
+        return Image.open(image_path)
+
+class NoopPreprocessor:
+    def preprocess(self, image):
+        return image
+
+def run_image_to_excel(image_path_str: str, output_dir_str: str) -> str:
+    """
+    Cursor debe hacer que la GUI llame a esta función con la ruta de imagen seleccionada
+    y el directorio de salida que el usuario elige en la ventana.
+    Devuelve la ruta final del Excel generado.
+    """
+    image_path = Path(image_path_str)
+    output_dir = Path(output_dir_str)
+
+    app = ProcessImageToExcel(
+        image_loader=PillowImageLoader(),
+        preprocessor=NoopPreprocessor(),  # si tienes un preprocesador real, inyéctalo aquí
+        ocr_engine=PaddleOcrEngine(table_detector=PaddleTableDetector(), lang="es"),  # prueba "es"
+        excel_exporter=OpenpyxlExcelExporter(),
+        default_output_name="texto_extraido.xlsx",
+    )
+
+    result = app.execute(image_path, output_dir)
+    return result.output_path.as_posix()
+# --- FIN BLOQUE NUEVO ---
+
 
 class ImageProcessor(QObject):
     """
@@ -64,9 +111,12 @@ class ImageProcessor(QObject):
         self.logger = get_logger(self.__class__.__name__)
         self._ocr_engine: Optional[PaddleOCREngine] = None
 
+        # Wiring de la nueva arquitectura
+        self._setup_new_architecture()
+
     def process_image(self, image_path: str, output_dir: str) -> None:
         """
-        Procesa una imagen y genera un archivo Excel.
+        Procesa una imagen y genera un archivo Excel usando la nueva arquitectura Clean Architecture.
 
         Parameters
         ----------
@@ -84,34 +134,9 @@ class ImageProcessor(QObject):
             self._validate_inputs(image_path, output_dir)
             self.progress_updated.emit(20)
 
-            # Inicializar motor OCR si es necesario
-            if self._ocr_engine is None:
-                from services.paddle_ocr import OCRConfig
-                ocr_config = OCRConfig(
-                    language=self.config.ocr_language,
-                    use_angle_cls=self.config.ocr_use_angle_cls
-                )
-                self._ocr_engine = PaddleOCREngine(config=ocr_config)
-            self.progress_updated.emit(30)
-
-            # Extraer texto con OCR
-            self.logger.info("Ejecutando OCR en la imagen")
-            ocr_result = self._ocr_engine.extract_text(image_path)
-            self.progress_updated.emit(60)
-
-            # Convertir a tabla
-            self.logger.info("Convirtiendo resultado OCR a tabla")
-            table = ocr_to_table(ocr_result)
-            self.progress_updated.emit(80)
-
-            # Exportar a Excel
-            self.logger.info("Exportando tabla a Excel")
-            excel_path = export_table_to_excel(
-                table=table,
-                ocr=ocr_result,
-                output_dir=output_dir,
-                filename=self.config.excel_default_filename
-            )
+            # Usar la nueva función de Clean Architecture
+            self.logger.info("Ejecutando conversión con Clean Architecture")
+            excel_path = run_image_to_excel(image_path, output_dir)
             self.progress_updated.emit(100)
 
             self.logger.info("Procesamiento completado exitosamente: %s", excel_path)
@@ -155,6 +180,12 @@ class ImageProcessor(QObject):
 
         # Crear directorio de salida si no existe
         os.makedirs(output_dir, exist_ok=True)
+
+    def _setup_new_architecture(self):
+        """Configura la nueva arquitectura con inyección de dependencias."""
+        # Ya no necesitamos esta configuración porque usamos run_image_to_excel()
+        # que maneja el wiring internamente
+        self.logger.info("Nueva arquitectura configurada - usando run_image_to_excel()")
 
 
 class OCRWorker(QThread):
