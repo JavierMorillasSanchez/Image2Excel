@@ -34,6 +34,13 @@ I2E/
 - 🔜 Refactor a puertos y casos de uso (use-cases) para aislar la lógica
 - 🔜 Test de integración imagen → xlsx cubriendo el flujo completo
 
+## Ejecución rápida (modo estable, sin cv2)
+
+Requisitos (venv activado):
+```bash
+pip install -r requirements.txt
+```
+
 ## 🔧 Instalación
 
 ### Requisitos del Sistema
@@ -59,7 +66,7 @@ pytesseract==0.3.13
 
 ### Instalación Automática
 
-```bash
+   ```bash
 # Clonar el repositorio
 git clone https://github.com/tu-usuario/I2E.git
 cd I2E
@@ -72,8 +79,8 @@ source venv/bin/activate  # En Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Ejecutar la aplicación
-python main.py
-```
+   python main.py
+   ```
 
 ### Instalación Manual
 
