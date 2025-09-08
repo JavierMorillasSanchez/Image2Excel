@@ -1,19 +1,26 @@
-# main.py
-"""Entry-point (composition root) y mínima UI/CLI.
-
-PyQt5 permanece igual si ya tienes una ventana. Para simplificar,
-dejamos aquí una CLI utilizable por CI y para pruebas.
-"""
-
 from __future__ import annotations
 import argparse
 from pathlib import Path
 import logging
 
-from infrastructure.logging_config import configure_logging
-from config import get_config
+try:
+    from infrastructure.logging_config import configure_logging as _cfg_log
+except Exception:
+    _cfg_log = None
+
 from image2excel.use_cases import RunImageToExcel, RunImageToExcelConfig
 from image2excel.adapters import PaddleOcrAdapter, BasicParserAdapter, OpenpyxlExporterAdapter
+
+
+def configure_logging(level: int = logging.INFO) -> None:
+    if _cfg_log:
+        _cfg_log(level=level)
+    else:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+            datefmt="%H:%M:%S",
+        )
 
 
 def build_use_case() -> RunImageToExcel:
@@ -24,22 +31,21 @@ def build_use_case() -> RunImageToExcel:
 
 
 def run_cli() -> int:
-    ap = argparse.ArgumentParser(description="Image2Excel - OCR a Excel")
-    ap.add_argument("image", type=Path, help="Ruta a la imagen")
+    ap = argparse.ArgumentParser(description="Image2Excel - OCR a Excel (modo estable sin cv2)")
+    ap.add_argument("image", type=Path, help="Ruta a la imagen de entrada")
     ap.add_argument("--out", type=Path, default=Path.cwd(), help="Directorio de salida")
-    ap.add_argument("--lang", default="es", help="Idioma OCR (ej. es, en)")
-    ap.add_argument("--max-cols", type=int, default=None, help="Límite de columnas del parser")
-    ap.add_argument("--filename", default="texto_extraido.xlsx", help="Nombre de salida")
+    ap.add_argument("--lang", default="es", help="Idioma OCR (es/en/...)")
+    ap.add_argument("--filename", default="texto_extraido.xlsx", help="Nombre del .xlsx")
+    ap.add_argument("--debug", action="store_true", help="Activa logging DEBUG")
     args = ap.parse_args()
 
-    cfg = get_config("production")
-    configure_logging(level=logging.INFO if not cfg.debug else logging.DEBUG)
+    configure_logging(level=logging.DEBUG if args.debug else logging.INFO)
 
     use_case = build_use_case()
     xlsx = use_case(
         image_path=args.image,
         output_dir=args.out,
-        cfg=RunImageToExcelConfig(lang=args.lang, max_cols=args.max_cols, output_filename=args.filename),
+        cfg=RunImageToExcelConfig(lang=args.lang, output_filename=args.filename),
     )
     print(f"✅ Excel generado: {xlsx}")
     return 0

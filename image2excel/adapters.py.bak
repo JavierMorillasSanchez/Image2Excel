@@ -1,0 +1,55 @@
+# image2excel/adapters.py
+"""Adapters: implementaciones concretas de los puertos usando services/."""
+
+from __future__ import annotations
+from pathlib import Path
+from typing import Iterable, List
+
+from .ports import OcrEngine, TableParser, ExcelExporter, OcrWord, Table, TableRow
+
+# Reutilizamos tus servicios existentes
+from services.ocr_service import PaddleOcrService
+from services.ocr_service import PaddleOcrService
+from services.exporter import ExcelExporter as ExcelExporterImpl
+
+
+class PaddleOcrAdapter(OcrEngine):
+    def __init__(self, lang_default: str = "es") -> None:
+        self._svc = PaddleOcrService(lang_default)
+
+    def extract_words(self, image_path: Path, lang: str) -> List[OcrWord]:
+        result = self._svc.extract_words(str(image_path), lang=lang)
+        # Esperamos que result sea lista de dicts o similar; normalizamos:
+        words: List[OcrWord] = [
+            OcrWord(
+                text=w["text"],
+                confidence=float(w.get("confidence", 0.0)),
+                x=int(w["bbox"][0]),
+                y=int(w["bbox"][1]),
+                w=int(w["bbox"][2]),
+                h=int(w["bbox"][3]),
+            )
+            for w in result
+        ]
+        return words
+
+
+class BasicParserAdapter(TableParser):
+    def __init__(self) -> None:
+        self._svc = BasicTableParser()
+
+    def words_to_table(self, words: Iterable[OcrWord], max_cols: int | None = None) -> Table:
+        rows = self._svc.words_to_rows(
+            [{"text": w.text, "x": w.x, "y": w.y, "w": w.w, "h": w.h} for w in words],
+            max_cols=max_cols,
+        )
+        return Table(rows=[TableRow(cells=r) for r in rows])
+
+
+class OpenpyxlExporterAdapter(ExcelExporter):
+    def __init__(self) -> None:
+        self._svc = ExcelExporterImpl()
+
+    def export(self, table: Table, output_dir: Path, filename: str) -> Path:
+        out = self._svc.export_table([r.cells for r in table.rows], str(output_dir), filename)
+        return Path(out)
