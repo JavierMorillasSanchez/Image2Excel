@@ -9,12 +9,15 @@ from __future__ import annotations
 import sys
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
+import cv2
+import numpy as np
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFileDialog, QProgressBar, QTextEdit,
-    QMessageBox, QFrame, QSpacerItem, QSizePolicy
+    QMessageBox, QFrame, QSpacerItem, QSizePolicy, QCheckBox,
+    QDialog, QScrollArea
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QPixmap, QIcon
@@ -22,6 +25,160 @@ from PyQt5.QtGui import QFont, QPixmap, QIcon
 from config import AppConfig
 from image2excel.use_cases import RunImageToExcel, RunImageToExcelConfig
 from image2excel.adapters import PaddleOcrAdapter, BasicParserAdapter, OpenpyxlExporterAdapter
+
+
+class GridMarkerDialog(QDialog):
+    """Diálogo para marcar separadores de cuadrícula en la imagen."""
+
+    def __init__(self, image_path: str, parent=None):
+        super().__init__(parent)
+        self.image_path = image_path
+        self.vertical_lines = []  # Lista de coordenadas X
+        self.horizontal_lines = []  # Lista de coordenadas Y
+        self.setup_ui()
+        self.load_image()
+
+    def setup_ui(self):
+        """Configura la interfaz del diálogo."""
+        self.setWindowTitle("Marcar Separadores de Cuadrícula")
+        self.setModal(True)
+        self.resize(800, 600)
+
+        layout = QVBoxLayout(self)
+
+        # Instrucciones
+        instructions = QLabel(
+            "Haz clic en la imagen para marcar separadores:\n"
+            "• Clic izquierdo: Línea vertical (columna)\n"
+            "• Clic derecho: Línea horizontal (fila)\n"
+            "• Doble clic: Finalizar"
+        )
+        instructions.setStyleSheet("font-weight: bold; margin: 10px;")
+        layout.addWidget(instructions)
+
+        # Área de scroll para la imagen
+        scroll_area = QScrollArea()
+        self.image_label = QLabel()
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.mousePressEvent = self.on_image_click
+        scroll_area.setWidget(self.image_label)
+        scroll_area.setWidgetResizable(True)
+        layout.addWidget(scroll_area)
+
+        # Botones
+        button_layout = QHBoxLayout()
+
+        clear_button = QPushButton("Limpiar Todo")
+        clear_button.clicked.connect(self.clear_lines)
+        button_layout.addWidget(clear_button)
+
+        button_layout.addStretch()
+
+        cancel_button = QPushButton("Cancelar")
+        cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_button)
+
+        finish_button = QPushButton("Finalizar")
+        finish_button.clicked.connect(self.accept)
+        button_layout.addWidget(finish_button)
+
+        layout.addLayout(button_layout)
+
+    def load_image(self):
+        """Carga y muestra la imagen."""
+        try:
+            # Cargar imagen con OpenCV
+            img = cv2.imread(self.image_path)
+            if img is None:
+                raise ValueError(f"No se pudo cargar la imagen: {self.image_path}")
+
+            # Convertir BGR a RGB para Qt
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            h, w, ch = img_rgb.shape
+            bytes_per_line = ch * w
+
+            # Crear QImage
+            from PyQt5.QtGui import QImage
+            q_image = QImage(img_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
+
+            # Escalar imagen si es muy grande
+            max_size = 1000
+            if w > max_size or h > max_size:
+                scale = max_size / max(w, h)
+                new_w = int(w * scale)
+                new_h = int(h * scale)
+                q_image = q_image.scaled(new_w, new_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                self.scale_factor = scale
+            else:
+                self.scale_factor = 1.0
+
+            # Guardar dimensiones originales
+            self.original_width = w
+            self.original_height = h
+
+            # Mostrar imagen
+            pixmap = QPixmap.fromImage(q_image)
+            self.image_label.setPixmap(pixmap)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error al cargar la imagen: {e}")
+            self.reject()
+
+    def on_image_click(self, event):
+        """Maneja los clics en la imagen."""
+        if event.button() == Qt.LeftButton:
+            # Clic izquierdo: línea vertical
+            x = int(event.x() / self.scale_factor)
+            if x not in self.vertical_lines:
+                self.vertical_lines.append(x)
+                self.vertical_lines.sort()
+        elif event.button() == Qt.RightButton:
+            # Clic derecho: línea horizontal
+            y = int(event.y() / self.scale_factor)
+            if y not in self.horizontal_lines:
+                self.horizontal_lines.append(y)
+                self.horizontal_lines.sort()
+
+        self.update_image_display()
+
+    def update_image_display(self):
+        """Actualiza la imagen con las líneas marcadas."""
+        # Recargar imagen original
+        img = cv2.imread(self.image_path)
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # Dibujar líneas verticales
+        for x in self.vertical_lines:
+            cv2.line(img_rgb, (x, 0), (x, img_rgb.shape[0]), (255, 0, 0), 2)
+
+        # Dibujar líneas horizontales
+        for y in self.horizontal_lines:
+            cv2.line(img_rgb, (0, y), (img_rgb.shape[1], y), (0, 255, 0), 2)
+
+        # Convertir a QImage y mostrar
+        h, w, ch = img_rgb.shape
+        bytes_per_line = ch * w
+        from PyQt5.QtGui import QImage
+        q_image = QImage(img_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
+
+        # Escalar si es necesario
+        if self.scale_factor != 1.0:
+            new_w = int(w * self.scale_factor)
+            new_h = int(h * self.scale_factor)
+            q_image = q_image.scaled(new_w, new_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+        pixmap = QPixmap.fromImage(q_image)
+        self.image_label.setPixmap(pixmap)
+
+    def clear_lines(self):
+        """Limpia todas las líneas marcadas."""
+        self.vertical_lines.clear()
+        self.horizontal_lines.clear()
+        self.update_image_display()
+
+    def get_grid_coordinates(self) -> tuple[List[int], List[int]]:
+        """Retorna las coordenadas de las líneas marcadas."""
+        return self.vertical_lines, self.horizontal_lines
 
 
 class OCRWorker(QThread):
@@ -190,6 +347,11 @@ class ImageToExcelApp(QMainWindow):
         # Sección de directorio de salida
         output_section = self.create_output_section()
         main_layout.addWidget(output_section)
+
+        # Checkbox para modo asistido
+        self.assisted_mode_checkbox = QCheckBox("Modo asistido (marcar columnas/filas)")
+        self.assisted_mode_checkbox.setFont(QFont("Arial", 10))
+        main_layout.addWidget(self.assisted_mode_checkbox)
 
         # Barra de progreso
         self.progress_bar = QProgressBar()
@@ -422,6 +584,48 @@ class ImageToExcelApp(QMainWindow):
             self.log_text.append("⚠️ Ya hay un proceso en ejecución. Espere a que termine.")
             return
 
+        # Verificar modo asistido
+        if self.assisted_mode_checkbox.isChecked():
+            self.start_assisted_mode()
+        else:
+            self.start_normal_mode()
+
+    def start_assisted_mode(self):
+        """Inicia el modo asistido con marcado de cuadrícula."""
+        # Deshabilitar botones durante procesamiento
+        self.convert_button.setEnabled(False)
+        self.convert_button.setText("🔄 Abriendo editor...")
+        self.select_image_button.setEnabled(False)
+        self.select_output_button.setEnabled(False)
+
+        # Limpiar logs y mostrar información inicial
+        self.log_text.clear()
+        self.log_text.append("=" * 50)
+        self.log_text.append("🎯 MODO ASISTIDO - MARCAR CUADRÍCULA")
+        self.log_text.append("=" * 50)
+        self.log_text.append(f"📁 Imagen: {Path(self.selected_image_path).name}")
+        self.log_text.append(f"📂 Destino: {Path(self.selected_output_dir).name}")
+        self.log_text.append("🖱️ Abriendo editor de cuadrícula...")
+        self.log_text.append("")
+
+        # Abrir diálogo de marcado de cuadrícula
+        dialog = GridMarkerDialog(self.selected_image_path, self)
+        if dialog.exec_() == QDialog.Accepted:
+            vertical_lines, horizontal_lines = dialog.get_grid_coordinates()
+
+            if not vertical_lines or not horizontal_lines:
+                self.log_text.append("❌ Error: Debe marcar al menos una línea vertical y una horizontal")
+                self.reset_ui_state()
+                return
+
+            # Procesar cuadrícula asistida
+            self.process_assisted_grid(vertical_lines, horizontal_lines)
+        else:
+            self.log_text.append("❌ Operación cancelada por el usuario")
+            self.reset_ui_state()
+
+    def start_normal_mode(self):
+        """Inicia el modo normal de procesamiento."""
         # Deshabilitar botones durante procesamiento
         self.convert_button.setEnabled(False)
         self.convert_button.setText("🔄 Procesando...")
@@ -453,6 +657,74 @@ class ImageToExcelApp(QMainWindow):
         self.worker.progress.connect(self.progress_bar.setValue)
         self.worker.log_message.connect(self.on_log_message)
         self.worker.start()
+
+    def process_assisted_grid(self, vertical_lines: List[int], horizontal_lines: List[int]):
+        """Procesa la cuadrícula marcada por el usuario."""
+        try:
+            self.log_text.append("🔍 Procesando cuadrícula asistida...")
+            self.log_text.append(f"📏 Líneas verticales: {len(vertical_lines)}")
+            self.log_text.append(f"📏 Líneas horizontales: {len(horizontal_lines)}")
+
+            # Mostrar barra de progreso
+            self.progress_bar.setVisible(True)
+            self.progress_bar.setValue(10)
+
+            # Importar y usar el servicio de cuadrícula asistida
+            from services.assist_grid import extract_text_from_grid
+
+            # Extraer texto de la cuadrícula
+            grid_data = extract_text_from_grid(
+                self.selected_image_path,
+                vertical_lines,
+                horizontal_lines,
+                self.config.ocr_language
+            )
+
+            self.progress_bar.setValue(80)
+            self.log_text.append("📊 Cuadrícula procesada, exportando a Excel...")
+
+            # Exportar a Excel usando el exporter actual
+            from image2excel.adapters import OpenpyxlExporterAdapter
+            from image2excel.ports import Table, TableRow
+
+            # Convertir datos a formato Table
+            table_rows = [TableRow(cells=row) for row in grid_data]
+            table = Table(rows=table_rows)
+
+            # Generar nombre de archivo
+            image_name = Path(self.selected_image_path).stem
+            filename = f"imagen_a_excel_{image_name}.xlsx"
+
+            # Exportar
+            exporter = OpenpyxlExporterAdapter()
+            output_path = exporter.export(table, self.selected_output_dir, filename)
+
+            self.progress_bar.setValue(100)
+            self.log_text.append("✅ ¡Conversión completada exitosamente!")
+            self.log_text.append(f"📄 Archivo generado: {Path(output_path).name}")
+            self.log_text.append(f"📂 Ubicación: {output_path}")
+
+            # Mostrar mensaje de éxito
+            QMessageBox.information(
+                self,
+                "Conversión Exitosa",
+                f"El archivo Excel se ha generado correctamente:\n\n{output_path}"
+            )
+
+        except Exception as e:
+            self.log_text.append(f"❌ Error en modo asistido: {e}")
+            QMessageBox.critical(self, "Error", f"Error en modo asistido: {e}")
+
+        finally:
+            self.reset_ui_state()
+
+    def reset_ui_state(self):
+        """Restaura el estado de la UI después del procesamiento."""
+        self.convert_button.setEnabled(True)
+        self.convert_button.setText("🔄 Convertir a Excel")
+        self.select_image_button.setEnabled(True)
+        self.select_output_button.setEnabled(True)
+        self.progress_bar.setVisible(False)
 
     def on_log_message(self, message: str):
         """Maneja mensajes de log del worker."""
