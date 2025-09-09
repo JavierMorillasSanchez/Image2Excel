@@ -251,7 +251,8 @@ class OCRWorker(QThread):
 
             config = RunImageToExcelConfig(
                 lang=self.config.ocr_language,
-                output_filename=excel_filename
+                output_filename=excel_filename,
+                template_path=Path(self.template_path) if self.template_path else None
             )
             self.log_message.emit(f"📋 Idioma OCR: {config.lang}")
             self.log_message.emit(f"📄 Nombre de archivo: {config.output_filename}")
@@ -301,6 +302,7 @@ class ImageToExcelApp(QMainWindow):
         self.selected_output_dir: Optional[str] = None
         self.worker: Optional[OCRWorker] = None
         self.last_output_dir: Optional[str] = None  # Para recordar el último directorio usado
+        self.template_path = ""  # Para almacenar la ruta de la plantilla
 
         self.init_ui()
         self.apply_styles()
@@ -352,6 +354,10 @@ class ImageToExcelApp(QMainWindow):
         self.assisted_mode_checkbox = QCheckBox("Modo asistido (marcar columnas/filas)")
         self.assisted_mode_checkbox.setFont(QFont("Arial", 10))
         main_layout.addWidget(self.assisted_mode_checkbox)
+
+        # Sección de plantillas
+        template_section = self.create_template_section()
+        main_layout.addWidget(template_section)
 
         # Barra de progreso
         self.progress_bar = QProgressBar()
@@ -430,6 +436,41 @@ class ImageToExcelApp(QMainWindow):
         h_layout.addWidget(self.output_label, 1)
 
         layout.addLayout(h_layout)
+        return section
+
+    def create_template_section(self) -> QWidget:
+        """Crea la sección para manejar plantillas."""
+        section = QWidget()
+        layout = QVBoxLayout(section)
+        layout.setSpacing(15)
+        layout.setContentsMargins(0, 15, 0, 15)
+
+        # Título de sección
+        title = QLabel("📋 Plantillas")
+        title.setFont(QFont("Arial", 12, QFont.Bold))
+        layout.addWidget(title)
+
+        # Layout horizontal para botones
+        h_layout = QHBoxLayout()
+        h_layout.setSpacing(10)
+
+        # Botón para crear plantilla
+        self.btn_build_tpl = QPushButton("Crear plantilla (img/pdf/docx)")
+        self.btn_build_tpl.clicked.connect(self.on_build_template_any)
+        h_layout.addWidget(self.btn_build_tpl)
+
+        # Botón para usar plantilla
+        self.btn_pick_tpl = QPushButton("Usar plantilla (.json)")
+        self.btn_pick_tpl.clicked.connect(self.on_pick_template)
+        h_layout.addWidget(self.btn_pick_tpl)
+
+        layout.addLayout(h_layout)
+
+        # Label para mostrar plantilla actual
+        self.template_label = QLabel("Plantilla: (ninguna)")
+        self.template_label.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(self.template_label)
+
         return section
 
     def apply_styles(self):
@@ -786,6 +827,41 @@ class ImageToExcelApp(QMainWindow):
             f"Ocurrió un error durante la conversión:\n\n{error_message}\n\n"
             f"Revise los logs para más detalles."
         )
+
+    def on_build_template_any(self):
+        """Maneja la creación de plantillas desde archivos de referencia."""
+        from services.template_builder import build_template_from_path, save_template
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Referencia: tabla vacía", "", "Todos (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp *.pdf *.docx)"
+        )
+        if not path:
+            return
+
+        try:
+            t = build_template_from_path(path, page=0)  # si PDF, coge la primera página
+            out_json, _ = QFileDialog.getSaveFileName(
+                self, "Guardar plantilla", "templates/plantilla.json", "JSON (*.json)"
+            )
+            if not out_json:
+                return
+
+            save_template(t, out_json)
+            QMessageBox.information(self, "Plantilla", f"✅ Plantilla guardada:\n{out_json}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error plantilla", str(e))
+
+    def on_pick_template(self):
+        """Maneja la selección de plantillas existentes."""
+        from PyQt5.QtWidgets import QFileDialog
+
+        json_path, _ = QFileDialog.getOpenFileName(
+            self, "Selecciona plantilla", "", "JSON (*.json)"
+        )
+        if json_path:
+            self.template_path = json_path
+            self.template_label.setText(f"Plantilla: {Path(json_path).name}")
 
     def closeEvent(self, event):
         """Maneja el cierre de la aplicación."""
