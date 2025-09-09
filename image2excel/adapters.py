@@ -6,11 +6,11 @@ Sin dependencia de services.parser: parser básico embebido aquí.
 
 from __future__ import annotations
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Tuple
 
 from .ports import OcrEngine, TableParser, ExcelExporter, OcrWord, Table, TableRow
 
-# OCR ligero (pytesseract + PIL; sin cv2).
+# Servicio OCR (Paddle), SIN Tesseract
 from services.paddle_ocr import PaddleOcrService  # usa este servicio ya corregido
 
 # Exportador a Excel (openpyxl)
@@ -20,23 +20,37 @@ from services.exporter import ExcelExporter as ExcelExporterImpl
 # -------------------------- OCR Adapter --------------------------
 
 class PaddleOcrAdapter(OcrEngine):
-    def __init__(self, lang_default: str = "es") -> None:
-        self._svc = PaddleOcrService(lang_default)
+    """
+    Adaptador OCR que usa exclusivamente PaddleOcrService y
+    convierte la salida cruda de PaddleOCR -> lista[OcrWord].
+    """
+    def __init__(self):
+        # PaddleOcrService acepta profile y use_gpu
+        self._svc = PaddleOcrService(profile="precision", use_gpu=False)
 
-    def extract_words(self, image_path: Path, lang: str) -> List[OcrWord]:
-        result = self._svc.extract_words(str(image_path), lang=lang)
-        words: List[OcrWord] = [
-            OcrWord(
-                text=w["text"],
-                confidence=float(w.get("confidence", 0.0)),
-                x=int(w["bbox"][0]),
-                y=int(w["bbox"][1]),
-                w=int(w["bbox"][2]),
-                h=int(w["bbox"][3]),
+    def extract_words(self, image_path: str, lang: str = "es") -> List[OcrWord]:
+        """
+        Devuelve una lista de OcrWord con coordenadas de bounding box,
+        que es lo que el parser / use_case esperan.
+        """
+        # Salida PaddleOCR: [ [poly([[x,y]x4]), (text, conf)] , ... ]
+        results: List[Tuple[List[List[int]], Tuple[str, float]]] = self._svc.extract_words(
+            str(Path(image_path)), lang=lang
+        )
+        words: List[OcrWord] = []
+
+        for poly, (txt, conf) in results:
+            if not txt or not str(txt).strip():
+                continue
+            xs = [p[0] for p in poly]
+            ys = [p[1] for p in poly]
+            x_min, x_max = float(min(xs)), float(max(xs))
+            y_min, y_max = float(min(ys)), float(max(ys))
+            w = max(1.0, x_max - x_min)
+            h = max(1.0, y_max - y_min)
+            words.append(
+                OcrWord(text=str(txt).strip(), confidence=float(conf), x=int(x_min), y=int(y_min), w=int(w), h=int(h))
             )
-            for w in result
-            if (w.get("text") or "").strip()
-        ]
         return words
 
 
@@ -89,6 +103,5 @@ class OpenpyxlExporterAdapter(ExcelExporter):
         self._svc = ExcelExporterImpl()
 
     def export(self, table: Table, output_dir: Path, filename: str) -> Path:
-        # Pasamos el objeto Table directamente, porque services/exporter.py valida table.rows
-        out = self._svc.export_table(table, str(output_dir), filename)
+        out = self._svc.export_table([r.cells for r in table.rows], str(output_dir), filename)
         return Path(out)

@@ -1,106 +1,91 @@
-"""
-OCR service: PRIORIDAD PaddleOCR (preciso). Fallback a Tesseract SOLO si el ejecutable existe.
-- Import de PaddleOCR es lazy (dentro del método) para no fallar en import-time.
-- Mapeo de lang: 'es' -> 'latin' (PaddleOCR usa 'latin' para lenguas romances).
-"""
+# services/paddle_ocr.py
 from __future__ import annotations
-from pathlib import Path
-from typing import List
-import os
-from shutil import which
+from dataclasses import dataclass
+from typing import List, Tuple
+import cv2
+import numpy as np
+from paddleocr import PaddleOCR
 
-# --- Utils ---
 
-def _paddle_lang(lang: str) -> str:
-    lang = (lang or "en").lower()
-    # Paddle soporta 'en', 'ch', 'latin', 'korean', 'japan', 'fr', 'german', etc.
-    if lang in {"es", "pt", "it", "ca", "ro", "nl"}:
-        return "latin"
-    return lang
+@dataclass(frozen=True)
+class OCRPrecisionProfile:
+    det_db_thresh: float = 0.25
+    det_db_box_thresh: float = 0.35
+    det_db_unclip_ratio: float = 1.8
+    use_dilation: bool = True
+    use_angle_cls: bool = True
 
-def _tesseract_available() -> bool:
-    # Evita llamar a pytesseract si no existe el ejecutable
-    return bool(which("tesseract") or os.getenv("TESSERACT_CMD"))
 
-# --- Servicio ---
+def _get_profile(name: str | None) -> OCRPrecisionProfile:
+    k = (name or "precision").lower()
+    if k == "fast":
+        return OCRPrecisionProfile(0.30, 0.55, 1.5, False, True)
+    if k in ("balanced", "balanceado"):
+        return OCRPrecisionProfile(0.28, 0.45, 1.6, True, True)
+    return OCRPrecisionProfile()
+
 
 class PaddleOcrService:
-    """Servicio OCR preferentemente con PaddleOCR, fallback a Tesseract si está disponible."""
+    """
+    Servicio OCR basado EXCLUSIVAMENTE en PaddleOCR.
+    No importa ni usa pytesseract; no existe fallback a Tesseract.
+    API pública:
+      - extract_words(image_path: str, lang: str = "es") -> List[ (poly4, (text, conf)) ]
+    """
 
-    def __init__(self, lang_default: str = "es") -> None:
-        self._lang_default = lang_default
-        self._paddle = None  # instancia de PaddleOCR (lazy)
-
-    def extract_words(self, image_path: str, lang: str | None = None) -> List[dict]:
-        img_path = str(Path(image_path))
-        lang = lang or self._lang_default
-
-        # 1) Intentar SIEMPRE PaddleOCR primero
-        try:
-            return self._extract_with_paddle(img_path, _paddle_lang(lang))
-        except Exception as paddle_err:
-            # 2) Si hay Tesseract disponible (ejecutable), usar fallback
-            if _tesseract_available():
-                try:
-                    return self._extract_with_tesseract(img_path, lang)
-                except Exception as tess_err:
-                    raise RuntimeError(
-                        "PaddleOCR falló y el fallback Tesseract también falló."
-                    ) from tess_err
-            # 3) Sin Tesseract, propagar error de Paddle con mensaje claro
-            raise RuntimeError(
-                "OCR con PaddleOCR falló y Tesseract no está instalado en el sistema.\n"
-                "Soluciones: (a) corrige Paddle (ver logs), o (b) instala Tesseract y añade al PATH."
-            ) from paddle_err
-
-    # ----------------- Implementaciones -----------------
-
-    def _ensure_paddle(self, lang: str) -> None:
-        if self._paddle is not None:
-            return
-        # Import lazy para no romper en import-time
-        from paddleocr import PaddleOCR  # type: ignore
-        self._paddle = PaddleOCR(
-            use_angle_cls=True,
-            lang=lang,
-            det=True,
-            rec=True,
+    def __init__(self, profile: str = "precision", use_gpu: bool = False):
+        self._prof = _get_profile(profile)
+        # Idioma por defecto “es”; si quieres cambiarlo por llamada, se hace en extract_words
+        self._use_gpu = use_gpu
+        self._lang_default = "es"
+        # Inicializamos con el idioma por defecto; si luego llega otro idioma, recreamos ocr.
+        self._ocr = PaddleOCR(
+            use_angle_cls=self._prof.use_angle_cls,
+            lang=self._lang_default,
+            use_gpu=self._use_gpu,
+            det_db_thresh=self._prof.det_db_thresh,
+            det_db_box_thresh=self._prof.det_db_box_thresh,
+            det_db_unclip_ratio=self._prof.det_db_unclip_ratio,
+            use_dilation=self._prof.use_dilation,
             show_log=False,
+            rec_algorithm="CRNN",
         )
 
-    def _extract_with_paddle(self, image_path: str, lang: str) -> List[dict]:
-        self._ensure_paddle(lang)
-        assert self._paddle is not None
-        result = self._paddle.ocr(image_path, cls=True) or []
-        words: List[dict] = []
-        if not result:
-            return words
-        for box, (text, conf) in result[0]:
-            xs = [int(pt[0]) for pt in box]
-            ys = [int(pt[1]) for pt in box]
-            x, y = min(xs), min(ys)
-            w, h = max(xs) - x, max(ys) - y
-            words.append({"text": text, "confidence": float(conf), "bbox": [x, y, w, h]})
-        return words
+    @staticmethod
+    def _preprocess(img_bgr: np.ndarray) -> np.ndarray:
+        """Binarización ligera para manuscrito; devuelve BGR con texto oscuro."""
+        gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+        blur = cv2.GaussianBlur(gray, (3, 3), 0)
+        th = cv2.adaptiveThreshold(
+            blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 19, 9
+        )
+        th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, np.ones((2, 2), np.uint8), iterations=1)
+        return cv2.cvtColor(255 - th, cv2.COLOR_GRAY2BGR)
 
-    def _extract_with_tesseract(self, image_path: str, lang: str) -> List[dict]:
-        # Importar dentro (evita dependencia si no se usa)
-        import pytesseract  # type: ignore
-        from PIL import Image
+    def _ensure_lang(self, lang: str):
+        if lang and lang != self._lang_default:
+            # recrea el objeto OCR con el idioma solicitado
+            self._lang_default = lang
+            self._ocr = PaddleOCR(
+                use_angle_cls=self._prof.use_angle_cls,
+                lang=self._lang_default,
+                use_gpu=self._use_gpu,
+                det_db_thresh=self._prof.det_db_thresh,
+                det_db_box_thresh=self._prof.det_db_box_thresh,
+                det_db_unclip_ratio=self._prof.det_db_unclip_ratio,
+                use_dilation=self._prof.use_dilation,
+                show_log=False,
+                rec_algorithm="CRNN",
+            )
 
-        img = Image.open(image_path)
-        data = pytesseract.image_to_data(img, lang=lang, output_type=pytesseract.Output.DICT)
-        words: List[dict] = []
-        n = len(data.get("text", []))
-        for i in range(n):
-            text = (data["text"][i] or "").strip()
-            if not text:
-                continue
-            try:
-                conf = float(data["conf"][i])
-            except Exception:
-                conf = 0.0
-            x = int(data["left"][i]); y = int(data["top"][i])
-            w = int(data["width"][i]); h = int(data["height"][i])
-            words.append({"text": text, "confidence": conf if conf >= 0 else 0.0, "bbox": [x, y, w, h]})
-        return words
+    def extract_words(self, image_path: str, lang: str = "es") -> List[Tuple[List[List[int]], Tuple[str, float]]]:
+        """OCR → devuelve lista de (poly4, (text, conf)) como PaddleOCR estándar."""
+        img = cv2.imread(image_path)
+        if img is None:
+            raise ValueError(f"No se pudo leer la imagen: {image_path}")
+        self._ensure_lang(lang or "es")
+        pre = self._preprocess(img)
+        result = self._ocr.ocr(pre, cls=self._prof.use_angle_cls)
+        if isinstance(result, list) and len(result) == 1 and isinstance(result[0], list):
+            return result[0]
+        return result

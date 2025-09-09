@@ -1,77 +1,73 @@
+# services/exporter.py
+"""
+Exportador a Excel sencillo con openpyxl.
+
+API esperada por image2excel.adapters.OpenpyxlExporterAdapter:
+    class ExcelExporter:
+        def export_table(self, rows: list[list[str]], output_dir: str, filename: str) -> str
+"""
+
 from __future__ import annotations
 from pathlib import Path
-from typing import List, Sequence, Any, Iterable
+from typing import List
 from openpyxl import Workbook
-import logging
+from openpyxl.styles import Border, Side
+from openpyxl.utils import get_column_letter
 
-logger = logging.getLogger("ExcelExporter")
 
 class ExcelExporter:
-    """
-    Exportador tolerante:
-    - Acepta un objeto con .rows (y cada fila con .cells) -> Table del dominio
-    - O una lista de listas de str
-    """
-
-    def __init__(self, sheet_name: str = "Texto Extraído", include_confidence: bool = True) -> None:
+    def __init__(self, sheet_name: str = "Texto Extraído") -> None:
         self.sheet_name = sheet_name
-        self.include_confidence = include_confidence
-        logger.info(
-            "ExcelExporter inicializado con configuración: archivo=texto_extraido.xlsx, hoja=%s, incluir_confianza=%s",
-            self.sheet_name, self.include_confidence
-        )
 
-    # ------------------ API pública ------------------
+    def export_table(self, rows: List[List[str]], output_dir: str, filename: str) -> str:
+        out_dir = Path(output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / filename
 
-    def export_table(self, table_or_rows: Any, output_dir: str | Path, filename: str) -> str:
-        try:
-            rows = self._to_rows(table_or_rows)
-            out_dir = Path(output_dir)
-            out_dir.mkdir(parents=True, exist_ok=True)
-            out_path = out_dir / filename
+        # Normalizar filas a listas de strings
+        normalized_rows: List[List[str]] = []
+        for r in rows or [[]]:
+            if not isinstance(r, (list, tuple)):
+                normalized_rows.append([str(r)])
+            else:
+                normalized_rows.append(["" if v is None else str(v) for v in r])
 
-            wb = Workbook()
-            ws = wb.active
-            ws.title = self.sheet_name
+        # Crear rejilla rectangular: padding con "" hasta el número máximo de columnas
+        max_cols = max((len(r) for r in normalized_rows), default=0)
+        if max_cols == 0:
+            normalized_rows = [[""]]
+            max_cols = 1
+        for r in normalized_rows:
+            if len(r) < max_cols:
+                r.extend([""] * (max_cols - len(r)))
 
-            for r in rows or [[]]:
-                ws.append([str(c) for c in (list(r) if isinstance(r, (list, tuple)) else [r])])
+        wb = Workbook()
+        ws = wb.active
+        ws.title = self.sheet_name
 
-            wb.save(out_path)
-            return str(out_path)
-        except Exception as e:
-            logger.error("Error durante la exportación a Excel", exc_info=True)
-            raise RuntimeError(f"Error en exportación Excel: {e}") from e
+        for r in normalized_rows:
+            ws.append(r)
 
-    # ------------------ Helpers ------------------
+        # Bordes finos en todas las celdas
+        thin = Side(style="thin", color="000000")
+        thin_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        for row in ws.iter_rows(min_row=1, max_row=len(normalized_rows), min_col=1, max_col=max_cols):
+            for cell in row:
+                cell.border = thin_border
 
-    def _to_rows(self, table_or_rows: Any) -> List[List[str]]:
-        """
-        Normaliza la entrada a list[list[str]] aceptando:
-        - Objeto con .rows -> cada fila puede tener .cells
-        - list[list[str]]
-        """
-        # Caso Table del dominio (duck typing)
-        if hasattr(table_or_rows, "rows"):
-            rows_attr = getattr(table_or_rows, "rows")
-            rows_out: List[List[str]] = []
-            for r in rows_attr:
-                if hasattr(r, "cells"):
-                    rows_out.append([str(c) for c in getattr(r, "cells")])
-                elif isinstance(r, (list, tuple)):
-                    rows_out.append([str(c) for c in r])
-                else:
-                    rows_out.append([str(r)])
-            return rows_out
+        # Auto-ajuste de ancho de columnas según texto más largo
+        for col_idx in range(1, max_cols + 1):
+            col_letter = get_column_letter(col_idx)
+            max_len = 0
+            for row_idx in range(1, len(normalized_rows) + 1):
+                value = ws.cell(row=row_idx, column=col_idx).value
+                if value is None:
+                    continue
+                text = str(value)
+                if len(text) > max_len:
+                    max_len = len(text)
+            # Pequeño padding para mejor visualización
+            ws.column_dimensions[col_letter].width = max(8, min(60, max_len + 2))
 
-        # Caso lista directa
-        if isinstance(table_or_rows, (list, tuple)):
-            rows_out: List[List[str]] = []
-            for r in table_or_rows:
-                if isinstance(r, (list, tuple)):
-                    rows_out.append([str(c) for c in r])
-                else:
-                    rows_out.append([str(r)])
-            return rows_out
-
-        raise ValueError("El parámetro 'table' debe ser Table (.rows) o list[list[str]]")
+        wb.save(out_path)
+        return str(out_path)
