@@ -67,78 +67,165 @@ class OCRWorker(QThread):
             self.log_message.emit("✅ Validación de archivos completada")
             self.progress.emit(10)
 
-            # Construir caso de uso
-            self.log_message.emit("🔧 Inicializando componentes OCR...")
-            try:
-                ocr = PaddleOcrAdapter()
-                self.log_message.emit("✅ Adaptador OCR inicializado")
-            except Exception as e:
-                raise RuntimeError(f"Error al inicializar OCR: {e}")
-
-            try:
-                parser = BasicParserAdapter()
-                self.log_message.emit("✅ Parser de tablas inicializado")
-            except Exception as e:
-                raise RuntimeError(f"Error al inicializar parser: {e}")
-
-            try:
-                exporter = OpenpyxlExporterAdapter()
-                self.log_message.emit("✅ Exportador Excel inicializado")
-            except Exception as e:
-                raise RuntimeError(f"Error al inicializar exportador: {e}")
-
-            use_case = RunImageToExcel(ocr=ocr, parser=parser, exporter=exporter)
-            self.log_message.emit("✅ Caso de uso construido correctamente")
-            self.progress.emit(25)
-
-            # Configurar parámetros
-            self.log_message.emit("⚙️ Configurando parámetros de procesamiento...")
-
             # Generar nombre de archivo basado en la imagen
-            image_name = Path(self.image_path).stem  # Nombre sin extensión
+            image_name = Path(self.image_path).stem
             excel_filename = f"imagen_a_excel_{image_name}.xlsx"
+            output_xlsx = str(output_dir / excel_filename)
 
-            config = RunImageToExcelConfig(
-                lang=self.config.ocr_language,
-                output_filename=excel_filename,
-                template_path=Path(self.template_path) if self.template_path else None
-            )
-            self.log_message.emit(f"📋 Idioma OCR: {config.lang}")
-            self.log_message.emit(f"📄 Nombre de archivo: {config.output_filename}")
-            self.progress.emit(35)
+            self.log_message.emit("🚀 Iniciando procesamiento con plantilla...")
+            self.progress.emit(20)
 
-            # Ejecutar procesamiento
-            self.log_message.emit("🚀 Iniciando extracción de texto con OCR...")
-            self.progress.emit(40)
-
-            try:
-                output_path = use_case(
-                    image_path=image_path,
-                    output_dir=output_dir,
-                    cfg=config
+            # Procesar con plantilla si está disponible
+            if self.template_path:
+                output_path = self.process_with_template(
+                    str(image_path),
+                    "default_template",
+                    self.template_path,
+                    output_xlsx
                 )
-                self.log_message.emit("✅ Procesamiento OCR completado exitosamente")
-                self.progress.emit(80)
+            else:
+                # Procesamiento sin plantilla (fallback al método anterior)
+                output_path = self.process_without_template(str(image_path), output_xlsx)
 
-                # Verificar que el archivo se creó
-                if not output_path.exists():
-                    raise FileNotFoundError(f"El archivo Excel no se generó: {output_path}")
+            self.log_message.emit("✅ Procesamiento completado exitosamente")
+            self.progress.emit(90)
 
-                file_size = output_path.stat().st_size
-                self.log_message.emit(f"📊 Archivo Excel generado: {file_size} bytes")
-                self.progress.emit(100)
+            # Verificar que el archivo se creó
+            if not Path(output_path).exists():
+                raise FileNotFoundError(f"El archivo Excel no se generó: {output_path}")
 
-                self.log_message.emit("🎉 ¡Conversión completada exitosamente!")
-                self.finished.emit(str(output_path))
+            file_size = Path(output_path).stat().st_size
+            self.log_message.emit(f"📊 Archivo Excel generado: {file_size} bytes")
+            self.progress.emit(100)
 
-            except Exception as e:
-                raise RuntimeError(f"Error durante el procesamiento OCR: {e}")
+            self.log_message.emit("🎉 ¡Conversión completada exitosamente!")
+            self.finished.emit(output_path)
 
         except Exception as e:
             error_msg = f"❌ Error en procesamiento: {e}"
             self.log_message.emit(error_msg)
             logging.error(f"Error en procesamiento OCR: {e}", exc_info=True)
             self.error.emit(str(e))
+
+    def process_with_template(self, img_path: str, template_name: str, template_img_path: str, out_xlsx: str) -> str:
+        """Procesa imagen usando plantilla."""
+        import os
+        import time
+        import numpy as np
+        from pathlib import Path
+        import cv2
+        from image2excel.core.template_manager import TemplateManager, GridSpec, Cell
+        from image2excel.core.aligner import ImageAligner
+        from image2excel.core.grid_extractor import GridExtractor
+        from image2excel.core.ocr_engine import OCREngine
+        from image2excel.core.postprocess import postprocess_by_column
+        from image2excel.core.exporter_excel import export_rows_xlsx
+
+        # Configuración de debug
+        DEBUG_DUMP = True  # ponlo a False en producción
+        DEBUG_DIR = os.path.join("debug", time.strftime("%Y%m%d-%H%M%S"))
+
+        def debug_dump_image(name: str, img):
+            if not DEBUG_DUMP:
+                return
+            os.makedirs(DEBUG_DIR, exist_ok=True)
+            cv2.imwrite(os.path.join(DEBUG_DIR, f"{name}.png"), img)
+
+        def debug_dump_crop(cell, crop):
+            if not DEBUG_DUMP:
+                return
+            row = f"r{cell.row:02d}"
+            col = f"c{cell.col:02d}"
+            nm = (cell.name or "cell").replace(" ", "_")
+            path = os.path.join(DEBUG_DIR, f"{row}_{col}_{nm}.png")
+            cv2.imwrite(path, crop)
+
+        self.log_message.emit("📋 Cargando plantilla...")
+        tm = TemplateManager()
+        spec = tm.load(template_name)  # ya creado (ver apartado siguiente)
+
+        # 1) Cargar imágenes
+        self.log_message.emit("🖼️ Cargando imágenes...")
+        img_bgr = cv2.imdecode(np.fromfile(img_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        tmpl_bgr = TemplateManager.image_from_any(template_img_path)
+        self.progress.emit(30)
+
+        # 2) Alinear
+        self.log_message.emit("🔧 Alineando imagen con plantilla...")
+        aligner = ImageAligner(target_w=spec.width, target_h=spec.height)
+        img_aligned = aligner.align(img_bgr, tmpl_bgr)
+        self.progress.emit(50)
+
+        # 3) Recortar celdas
+        self.log_message.emit("✂️ Extrayendo celdas de la cuadrícula...")
+        extractor = GridExtractor(spec, pad=6)
+        crops = extractor.crop_cells(img_aligned)
+        self.progress.emit(60)
+
+        # Debug: guardar imagen alineada
+        debug_dump_image("00_aligned", img_aligned)
+
+        # 4) OCR por celda
+        self.log_message.emit("🔍 Realizando OCR por celda...")
+        ocr = OCREngine(lang=self.config.ocr_language)
+        values = {}
+        for cell, crop in crops:
+            debug_dump_crop(cell, crop)  # guarda el recorte de cada celda
+            col_name = cell.name or f"C{cell.col}"
+            try:
+                text = ocr.read_cell(crop) or ""   # <- nunca None
+            except Exception as e:
+                # Trazamos pero no paramos; así nunca verás el 'NoneType' repetido
+                print(f"[WARN] OCR falló en r{cell.row} c{cell.col} ({col_name}): {type(e).__name__}: {e}")
+                text = ""
+            values[(cell.row, col_name)] = postprocess_by_column(col_name, text)
+        self.progress.emit(75)
+
+        # 5) Reconstruir filas ordenadas
+        self.log_message.emit("📊 Reconstruyendo estructura de datos...")
+        # Asumimos cabecera fija: ["DXO", "Marca", "Peso"] y una col A con "vehicle/ID"
+        headers = ["Etiqueta", "DXO", "Marca", "Peso"]
+        # Determina número de filas por el máximo row detectado en spec
+        max_row = max(c.row for c in spec.cells)
+        rows = []
+        for r in range(1, max_row + 1):
+            rows.append({
+                "Etiqueta": values.get((r, "Etiqueta"), ""),
+                "DXO":      values.get((r, "DXO"), ""),
+                "Marca":    values.get((r, "Marca"), ""),
+                "Peso":     values.get((r, "Peso"), ""),
+            })
+
+        # 6) Exportar
+        self.log_message.emit("📄 Exportando a Excel...")
+        out_path = export_rows_xlsx(headers, rows, out_xlsx)
+        return out_path
+
+    def process_without_template(self, img_path: str, out_xlsx: str) -> str:
+        """Procesamiento sin plantilla (fallback)."""
+        self.log_message.emit("⚠️ Procesando sin plantilla (modo básico)...")
+
+        # Usar el método anterior como fallback
+        try:
+            ocr = PaddleOcrAdapter()
+            parser = BasicParserAdapter()
+            exporter = OpenpyxlExporterAdapter()
+            use_case = RunImageToExcel(ocr=ocr, parser=parser, exporter=exporter)
+
+            config = RunImageToExcelConfig(
+                lang=self.config.ocr_language,
+                output_filename=Path(out_xlsx).name
+            )
+
+            output_path = use_case(
+                image_path=Path(img_path),
+                output_dir=Path(out_xlsx).parent,
+                cfg=config
+            )
+            return str(output_path)
+
+        except Exception as e:
+            raise RuntimeError(f"Error en procesamiento sin plantilla: {e}")
 
 
 class ImageToExcelApp(QMainWindow):
